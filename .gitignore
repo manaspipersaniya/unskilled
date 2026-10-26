@@ -1,0 +1,27 @@
+# Live malware samples: never commit APKs
+data/uploads/
+*.apk
+*.7z
+
+# Third-party tools (jadx jar is >100 MB, GitHub rejects it)
+tools/
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Demo recording temp files
+demo/_work/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

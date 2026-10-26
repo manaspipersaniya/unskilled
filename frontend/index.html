@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>APK Forensics Platform · CH26-2834</title>
+  <meta name="description" content="AI-assisted Android APK security and forensic analysis platform for law-enforcement investigators. Static, dynamic, network and evasion analysis with explainable risk scoring."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-base:#0a0d14;--bg-surface:#0f1420;--bg-card:#141926;--bg-hover:#1a2235;
+      --border:#1e2a40;--border-hi:#2a3d5a;
+      --amber:#f59e0b;--amber-dim:#b45309;--red:#ef4444;--red-dim:#991b1b;
+      --green:#10b981;--green-dim:#065f46;--blue:#3b82f6;--purple:#8b5cf6;
+      --cyan:#06b6d4;--orange:#f97316;
+      --text-pri:#e2e8f0;--text-sec:#94a3b8;--text-dim:#475569;--text-code:#a5f3fc;
+      --font-ui:'Inter',sans-serif;--font-mono:'JetBrains Mono',monospace;
+      --radius:6px;--radius-lg:10px;--shadow:0 4px 24px rgba(0,0,0,.5);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg-base);color:var(--text-pri);font-family:var(--font-ui);font-size:14px;min-height:100vh;display:flex;overflow:hidden}
+    /* SIDEBAR */
+    #sidebar{width:220px;min-width:220px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:100}
+    .sidebar-logo{padding:20px 16px 16px;border-bottom:1px solid var(--border)}
+    .sidebar-logo .logo-text{font-family:var(--font-mono);font-size:11px;color:var(--amber);letter-spacing:.08em;text-transform:uppercase}
+    .sidebar-logo .logo-main{font-size:16px;font-weight:700;color:var(--text-pri);margin-top:4px;line-height:1.2}
+    .sidebar-logo .logo-sub{font-size:10px;color:var(--text-dim);font-family:var(--font-mono);margin-top:2px}
+    .sidebar-nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+    .nav-section-label{font-size:10px;font-family:var(--font-mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:.12em;padding:8px 8px 4px;margin-top:8px}
+    .nav-btn{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius);cursor:pointer;color:var(--text-sec);font-size:13px;font-weight:500;transition:background .15s,color .15s;border:none;background:transparent;width:100%;text-align:left}
+    .nav-btn:hover{background:var(--bg-hover);color:var(--text-pri)}
+    .nav-btn.active{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+    .nav-btn .icon{font-size:15px;width:18px;text-align:center}
+    .sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--text-dim);font-family:var(--font-mono)}
+    .status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:5px;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    /* MAIN */
+    #main{margin-left:220px;flex:1;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+    #topbar{position:sticky;top:0;background:rgba(10,13,20,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:50}
+    #search-input{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-pri);font-family:var(--font-mono);font-size:12px;padding:7px 12px;width:320px;outline:none;transition:border-color .15s}
+    #search-input:focus{border-color:var(--amber)}
+    #search-input::placeholder{color:var(--text-dim)}
+    .topbar-right{display:flex;align-items:center;gap:10px}
+    .topbar-badge{font-family:var(--font-mono);font-size:10px;padding:3px 8px;border-radius:20px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--amber)}
+    #refresh-btn{background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-sec);cursor:pointer;padding:6px 10px;font-size:14px;transition:all .15s}
+    #refresh-btn:hover{border-color:var(--amber);color:var(--amber)}
+    /* PAGES */
+    .page{display:none;padding:24px;animation:fadeIn .2s ease}
+    .page.active{display:block}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+    .page-title{font-size:20px;font-weight:700;color:var(--text-pri);margin-bottom:4px}
+    .page-sub{font-size:12px;color:var(--text-sec);font-family:var(--font-mono);margin-bottom:20px}
+    /* STAT CARDS */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+    .stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;position:relative;overflow:hidden;transition:border-color .2s}
+    .stat-card:hover{border-color:var(--border-hi)}
+    .stat-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%}
+    .stat-card.critical::before{background:var(--red)}
+    .stat-card.high::before{background:var(--orange)}
+    .stat-card.medium::before{background:var(--amber)}
+    .stat-card.low::before{background:var(--green)}
+    .stat-card.info::before{background:var(--blue)}
+    .stat-label{font-size:10px;font-family:var(--font-mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+    .stat-value{font-size:28px;font-weight:700;font-family:var(--font-mono);color:var(--text-pri);line-height:1}
+    .stat-card.critical .stat-value{color:var(--red)}
+    .stat-card.high .stat-value{color:var(--orange)}
+    .stat-card.medium .stat-value{color:var(--amber)}
+    .stat-card.low .stat-value{color:var(--green)}
+    .stat-sub{font-size:10px;color:var(--text-dim);margin-top:4px}
+    /* CHARTS */
+    .charts-row{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:16px;margin-bottom:24px}
+    .chart-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px}
+    .chart-title{font-size:11px;font-family:var(--font-mono);color:var(--text-sec);text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
+    .chart-wrap{position:relative;height:160px}
+    /* TABLE */
+    .table-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+    .table-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .table-title{font-size:12px;font-family:var(--font-mono);color:var(--text-sec);text-transform:uppercase;letter-spacing:.08em}
+    .filter-bar{display:flex;gap:6px;flex-wrap:wrap}
+    .filter-btn{font-size:10px;font-family:var(--font-mono);padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;transition:all .15s}
+    .filter-btn:hover{color:var(--text-pri);border-color:var(--border-hi)}
+    .filter-btn.active{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08)}
+    table{width:100%;border-collapse:collapse}
+    thead tr{background:rgba(14,20,32,.6)}
+    th{padding:10px 14px;text-align:left;font-size:10px;font-family:var(--font-mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none}
+    th:hover{color:var(--text-sec)}
+    th.sorted{color:var(--amber)}
+    td{padding:10px 14px;border-top:1px solid var(--border);font-size:12px;vertical-align:middle}
+    tr:hover td{background:var(--bg-hover);cursor:pointer}
+    .td-file{font-family:var(--font-mono);font-size:11px;color:var(--text-code)}
+    .td-pkg{font-family:var(--font-mono);font-size:10px;color:var(--text-sec);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600;white-space:nowrap}
+    .badge.Critical{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)}
+    .badge.High{background:rgba(249,115,22,.15);color:var(--orange);border:1px solid rgba(249,115,22,.3)}
+    .badge.Medium{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.3)}
+    .badge.Low{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.25)}
+    .score-bar-wrap{display:flex;align-items:center;gap:8px;min-width:100px}
+    .score-bar{flex:1;height:4px;background:var(--bg-base);border-radius:2px;overflow:hidden}
+    .score-bar-fill{height:100%;border-radius:2px;transition:width .3s}
+    .score-num{font-family:var(--font-mono);font-size:11px;min-width:28px;text-align:right}
+    .ioc-mini{font-family:var(--font-mono);font-size:10px;color:var(--text-dim)}
+    .ioc-mini span{color:var(--cyan);margin-right:6px}
+    .packed-tag{display:inline-block;font-family:var(--font-mono);font-size:9px;padding:1px 5px;background:rgba(139,92,246,.15);color:var(--purple);border:1px solid rgba(139,92,246,.3);border-radius:3px}
+    .table-empty{text-align:center;padding:48px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px}
+    /* MODAL */
+    #modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;backdrop-filter:blur(4px)}
+    #modal-overlay.open{display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto}
+    #modal{background:var(--bg-surface);border:1px solid var(--border-hi);border-radius:var(--radius-lg);width:100%;max-width:900px;box-shadow:var(--shadow);animation:slideUp .2s ease;margin:auto}
+    @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    .modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .modal-title{font-size:16px;font-weight:700}
+    .modal-pkg{font-family:var(--font-mono);font-size:11px;color:var(--text-sec);margin-top:4px}
+    .modal-close{background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-sec);cursor:pointer;padding:4px 10px;font-size:16px;transition:all .15s;flex-shrink:0}
+    .modal-close:hover{border-color:var(--red);color:var(--red)}
+    .modal-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 24px;gap:0;overflow-x:auto}
+    .modal-tab{padding:10px 14px;font-size:11px;font-family:var(--font-mono);color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+    .modal-tab:hover{color:var(--text-pri)}
+    .modal-tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+    .modal-body{padding:20px 24px}
+    .tab-pane{display:none}
+    .tab-pane.active{display:block}
+    /* RISK */
+    .risk-header{display:flex;align-items:flex-start;gap:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:16px}
+    .risk-circle{width:80px;height:80px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--font-mono);flex-shrink:0;border:3px solid var(--bg-base)}
+    .risk-circle .score-big{font-size:26px;font-weight:700;line-height:1}
+    .risk-circle .score-label{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em}
+    .risk-contributions{flex:1;max-height:300px;overflow-y:auto}
+    .contrib-item{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px}
+    .contrib-pts{font-family:var(--font-mono);font-size:10px;min-width:28px;color:var(--amber);font-weight:600}
+    .contrib-reason{color:var(--text-sec);line-height:1.4}
+    /* INFO GRID */
+    .info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:16px}
+    .info-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px}
+    .info-item-label{font-size:9px;font-family:var(--font-mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+    .info-item-val{font-size:12px;font-family:var(--font-mono);color:var(--text-code);word-break:break-all}
+    /* PERMISSIONS */
+    .perm-list{display:flex;flex-direction:column;gap:4px}
+    .perm-row{display:flex;align-items:center;gap:8px;background:var(--bg-card);border-radius:var(--radius);padding:6px 10px;font-size:11px;border:1px solid transparent}
+    .perm-row.dangerous{border-color:rgba(239,68,68,.2)}
+    .perm-row.suspicious{border-color:rgba(245,158,11,.2)}
+    .perm-name{font-family:var(--font-mono);font-size:11px;color:var(--text-code);flex:1}
+    .perm-reason{color:var(--text-sec);font-size:10px}
+    .perm-weight{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);min-width:24px;text-align:right}
+    /* EVASION */
+    .evasion-list{display:flex;flex-direction:column;gap:8px}
+    .evasion-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px}
+    .evasion-item .ev-title{font-size:12px;font-weight:600;color:var(--text-pri);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+    .evasion-item .ev-evidence{font-family:var(--font-mono);font-size:10px;color:var(--text-sec);word-break:break-all}
+    /* IoC */
+    .ioc-section{margin-bottom:16px}
+    .ioc-section-title{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+    .ioc-section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+    .ioc-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .ioc-chip{font-family:var(--font-mono);font-size:10px;padding:3px 8px;border-radius:4px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-code);word-break:break-all}
+    .ioc-chip.ip{border-color:rgba(6,182,212,.3);color:var(--cyan)}
+    .ioc-chip.domain{border-color:rgba(245,158,11,.3);color:var(--amber)}
+    .ioc-chip.url{border-color:rgba(59,130,246,.3);color:var(--blue)}
+    .ioc-chip.hash{border-color:rgba(148,163,184,.2);color:var(--text-sec);font-size:9px}
+    /* CODE */
+    .api-category{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;overflow:hidden}
+    .api-cat-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,.03);font-size:11px;font-family:var(--font-mono);cursor:pointer}
+    .api-cat-body{padding:8px 12px;display:none}
+    .api-cat-body.open{display:block}
+    .api-finding{font-size:10px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
+    .api-finding:last-child{border-bottom:none}
+    .api-name{font-family:var(--font-mono);color:var(--text-code);flex:1}
+    .api-loc{font-family:var(--font-mono);color:var(--text-dim);font-size:9px}
+    /* AI */
+    .ai-box{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px}
+    .ai-summary-text{font-size:13px;color:var(--text-sec);line-height:1.7;white-space:pre-wrap}
+    .ai-input-row{display:flex;gap:8px;margin-bottom:12px}
+    #ai-question{flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-pri);font-family:var(--font-mono);font-size:12px;padding:8px 12px;outline:none}
+    #ai-question:focus{border-color:var(--amber)}
+    .btn{padding:8px 16px;border-radius:var(--radius);border:none;cursor:pointer;font-size:12px;font-family:var(--font-mono);font-weight:600;transition:all .15s}
+    .btn-primary{background:var(--amber);color:#000}
+    .btn-primary:hover{background:#fbbf24}
+    .btn-primary:disabled{background:var(--amber-dim);cursor:not-allowed;opacity:.6}
+    .btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text-sec)}
+    .btn-secondary:hover{border-color:var(--border-hi);color:var(--text-pri)}
+    .ai-answer{background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius);padding:12px;font-size:12px;color:var(--text-sec);line-height:1.6;white-space:pre-wrap}
+    .ai-loading{display:flex;align-items:center;gap:8px;color:var(--text-dim);font-family:var(--font-mono);font-size:11px}
+    .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    /* UPLOAD */
+    .upload-zone{border:2px dashed var(--border-hi);border-radius:var(--radius-lg);padding:48px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg-card);margin-bottom:20px}
+    .upload-zone:hover,.upload-zone.drag-over{border-color:var(--amber);background:rgba(245,158,11,.04)}
+    .upload-icon{font-size:40px;margin-bottom:12px}
+    .upload-text{font-size:14px;color:var(--text-sec);margin-bottom:4px}
+    .upload-sub{font-size:11px;color:var(--text-dim);font-family:var(--font-mono)}
+    #file-input{display:none}
+    #upload-status{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px}
+    .upload-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+    .upload-item:last-child{border-bottom:none}
+    .upload-item .filename{font-family:var(--font-mono);color:var(--text-code);flex:1}
+    .upload-item .status{font-family:var(--font-mono);font-size:10px}
+    /* GRAPH */
+    #graph-container{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);height:600px;position:relative;overflow:hidden}
+    #graph-controls{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+    #min-score-input{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-pri);font-family:var(--font-mono);font-size:12px;padding:6px 10px;width:80px;outline:none}
+    #graph-legend{display:flex;gap:16px;flex-wrap:wrap}
+    .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-sec)}
+    .legend-dot{width:10px;height:10px;border-radius:50%}
+    /* CAMPAIGNS */
+    .campaign-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:10px;transition:border-color .15s}
+    .campaign-card:hover{border-color:var(--border-hi)}
+    .campaign-pkg{font-family:var(--font-mono);font-size:12px;color:var(--text-code);margin-bottom:4px}
+    .campaign-meta{display:flex;gap:16px;font-size:11px;color:var(--text-sec);flex-wrap:wrap}
+    .campaign-meta span{font-family:var(--font-mono)}
+    /* MANIFEST */
+    .manifest-pre{background:var(--bg-base);border:1px solid var(--border);border-radius:var(--radius);padding:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-sec);overflow-x:auto;white-space:pre;max-height:400px;overflow-y:auto}
+    /* COMPARE */
+    .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+    .compare-select{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-pri);font-family:var(--font-mono);font-size:12px;padding:8px 12px;width:100%;outline:none}
+    .compare-section{margin-bottom:12px}
+    .compare-section-title{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+    .compare-chips{display:flex;flex-wrap:wrap;gap:4px}
+    .compare-chip{font-family:var(--font-mono);font-size:10px;padding:2px 7px;border-radius:3px}
+    .compare-chip.common{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+    .compare-chip.only_a{background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+    .compare-chip.only_b{background:rgba(139,92,246,.1);color:var(--purple);border:1px solid rgba(139,92,246,.2)}
+    .similarity-bar-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;display:flex;align-items:center;gap:16px;margin-bottom:16px}
+    .similarity-pct{font-family:var(--font-mono);font-size:28px;font-weight:700;color:var(--cyan)}
+    /* MISC */
+    .flag-tag{display:inline-block;font-family:var(--font-mono);font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.3);margin:2px}
+    .no-data{padding:24px;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:11px}
+    /* TOAST / BANNER */
+    #toast{position:fixed;bottom:20px;right:20px;background:var(--bg-card);border:1px solid var(--amber);color:var(--text-pri);font-family:var(--font-mono);font-size:11px;padding:8px 14px;border-radius:var(--radius);box-shadow:var(--shadow);z-index:400;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none}
+    #toast.show{opacity:1;transform:none}
+    #offline-banner{display:none;margin:16px 24px 0;padding:12px 16px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.08);border-radius:var(--radius);font-size:12px;color:var(--red)}
+    #offline-banner code{font-family:var(--font-mono);color:var(--text-code);background:var(--bg-base);padding:2px 6px;border-radius:3px}
+    .copyable{cursor:copy;transition:filter .15s}
+    .copyable:hover{filter:brightness(1.35)}
+    /* BREAKDOWN */
+    .breakdown{margin-bottom:16px}
+    .breakdown-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--bg-base);margin-bottom:8px}
+    .breakdown-bar div{height:100%}
+    .breakdown-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:var(--font-mono);color:var(--text-sec)}
+    .breakdown-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px}
+    .risk-verdict{font-size:12px;color:var(--text-sec);line-height:1.5;margin-bottom:10px}
+    .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .campaign-samples{display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:8px}
+    .campaign-card.open .campaign-samples{display:block}
+    .campaign-card{cursor:pointer}
+    .campaign-sample{display:flex;justify-content:space-between;gap:10px;padding:5px 6px;border-radius:4px;font-family:var(--font-mono);font-size:11px}
+    .campaign-sample:hover{background:var(--bg-hover)}
+    kbd{font-family:var(--font-mono);font-size:9px;border:1px solid var(--border-hi);border-radius:3px;padding:1px 4px;color:var(--text-dim)}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:3px}
+    @media(max-width:768px){
+      #sidebar{width:60px;min-width:60px}
+      #sidebar .nav-btn span,#sidebar .sidebar-logo .logo-main,#sidebar .sidebar-logo .logo-sub,
+      #sidebar .nav-section-label,#sidebar .sidebar-logo .logo-text,#sidebar .sidebar-footer{display:none}
+      #main{margin-left:60px}
+      .charts-row{grid-template-columns:1fr}
+      .compare-grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-text">CH26-2834</div>
+    <div class="logo-main">APK Forensics</div>
+    <div class="logo-sub">PS-02 · Law Enforcement</div>
+  </div>
+  <div class="sidebar-nav">
+    <div class="nav-section-label">Analysis</div>
+    <button class="nav-btn active" data-page="overview" id="nav-overview"><span class="icon">⬡</span><span>Overview</span></button>
+    <button class="nav-btn" data-page="apks" id="nav-apks"><span class="icon">📦</span><span>APK Library</span></button>
+    <button class="nav-btn" data-page="campaigns" id="nav-campaigns"><span class="icon">🔗</span><span>Campaigns</span></button>
+    <button class="nav-btn" data-page="graph" id="nav-graph"><span class="icon">🕸</span><span>Link Graph</span></button>
+    <div class="nav-section-label">Tools</div>
+    <button class="nav-btn" data-page="upload" id="nav-upload"><span class="icon">⬆</span><span>Upload APK</span></button>
+    <button class="nav-btn" data-page="compare" id="nav-compare"><span class="icon">⚖</span><span>Compare</span></button>
+  </div>
+  <div class="sidebar-footer">
+    <span class="status-dot"></span>API <span id="api-status-text">checking…</span>
+  </div>
+</nav>
+
+<div id="main">
+  <div id="topbar">
+    <input id="search-input" type="text" placeholder="Search filename, package, hash, score…" autocomplete="off"/>
+    <div class="topbar-right">
+      <kbd>/</kbd>
+      <span class="topbar-badge" id="total-badge">— APKs</span>
+      <button id="refresh-btn" title="Refresh data">↻</button>
+    </div>
+  </div>
+  <div id="offline-banner">⚠ Backend API unreachable. Start it from the project folder: <code>python -m uvicorn backend.app:app --port 8000</code> then press ↻</div>
+
+  <!-- OVERVIEW -->
+  <section class="page active" id="page-overview">
+    <div class="page-title">Intelligence Dashboard</div>
+    <div class="page-sub">Android Malware Campaign PS-02 · Batch analysis results</div>
+    <div class="stats-grid" id="stats-grid"></div>
+    <div class="charts-row">
+      <div class="chart-card"><div class="chart-title">Risk Distribution</div><div class="chart-wrap"><canvas id="chart-risk"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Packing Status</div><div class="chart-wrap"><canvas id="chart-packed"></canvas></div></div>
+      <div class="chart-card"><div class="chart-title">Top Packages (sample count)</div><div class="chart-wrap"><canvas id="chart-packages"></canvas></div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header"><div class="table-title">High / Critical Samples</div></div>
+      <table><thead><tr><th>File</th><th>Package</th><th>Risk</th><th>Score</th><th>IoCs</th></tr></thead>
+      <tbody id="overview-tbody"></tbody></table>
+    </div>
+  </section>
+
+  <!-- APK LIBRARY -->
+  <section class="page" id="page-apks">
+    <div class="page-title">APK Library</div>
+    <div class="page-sub">Click any row to open full forensic detail — <span id="apk-count">0</span> samples shown</div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Samples <button class="btn btn-secondary" style="margin-left:10px;padding:3px 10px;font-size:10px" id="export-csv-btn">⬇ CSV</button></div>
+        <div class="filter-bar">
+          <button class="filter-btn active" data-level="all">All</button>
+          <button class="filter-btn" data-level="Critical">Critical</button>
+          <button class="filter-btn" data-level="High">High</button>
+          <button class="filter-btn" data-level="Medium">Medium</button>
+          <button class="filter-btn" data-level="Low">Low</button>
+          <button class="filter-btn" data-level="packed">Packed</button>
+        </div>
+      </div>
+      <table id="apk-table">
+        <thead><tr>
+          <th data-col="file_name">File</th>
+          <th data-col="app_name">App Name</th>
+          <th data-col="package">Package</th>
+          <th data-col="score" class="sorted">Score</th>
+          <th data-col="level">Level</th>
+          <th>Packed</th><th>IoCs</th>
+          <th data-col="size">Size</th>
+        </tr></thead>
+        <tbody id="apk-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CAMPAIGNS -->
+  <section class="page" id="page-campaigns">
+    <div class="page-title">Campaign Clusters</div>
+    <div class="page-sub">Samples grouped by shared package name · click a cluster to list its samples</div>
+    <div class="filter-bar" style="margin-bottom:14px">
+      <button class="filter-btn active" data-camp="multi">Multi-sample clusters</button>
+      <button class="filter-btn" data-camp="all">All packages</button>
+    </div>
+    <div id="campaigns-container"></div>
+  </section>
+
+  <!-- GRAPH -->
+  <section class="page" id="page-graph">
+    <div class="page-title">Link Graph</div>
+    <div class="page-sub">APKs linked to packages, certificates, IPs and domains — click APK nodes to drill in</div>
+    <div id="graph-controls">
+      <label style="font-size:11px;color:var(--text-sec);font-family:var(--font-mono)">Min score:</label>
+      <input id="min-score-input" type="number" value="50" min="0" max="100"/>
+      <button class="btn btn-secondary" id="load-graph-btn">Load Graph</button>
+      <div id="graph-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>APK</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Package</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div>IP</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>Domain</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Cert</div>
+      </div>
+    </div>
+    <div id="graph-container"></div>
+  </section>
+
+  <!-- UPLOAD -->
+  <section class="page" id="page-upload">
+    <div class="page-title">Upload APK for Analysis</div>
+    <div class="page-sub">Drop or select an .apk file — static analysis runs server-side</div>
+    <div class="upload-zone" id="upload-zone">
+      <div class="upload-icon">📱</div>
+      <div class="upload-text">Drop .apk file here or click to browse</div>
+      <div class="upload-sub">Android APK only · analysis takes 5–60 s</div>
+    </div>
+    <input type="file" id="file-input" accept=".apk" multiple/>
+    <div id="upload-status" style="display:none"></div>
+  </section>
+
+  <!-- COMPARE -->
+  <section class="page" id="page-compare">
+    <div class="page-title">APK Comparison</div>
+    <div class="page-sub">Side-by-side diff of permissions, APIs, evasion and IoCs</div>
+    <div class="compare-grid">
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--font-mono)">APK A (blue)</div>
+        <select id="compare-a" class="compare-select"></select>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--font-mono)">APK B (purple)</div>
+        <select id="compare-b" class="compare-select"></select>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="do-compare-btn">Run Comparison</button>
+    <div id="compare-results" style="margin-top:20px"></div>
+  </section>
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="toast"></div>
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title">APK Detail</div>
+        <div class="modal-pkg" id="modal-pkg"></div>
+        <div style="margin-top:6px" id="modal-badges"></div>
+      </div>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <div class="modal-tab active" data-tab="risk">Risk &amp; Score</div>
+      <div class="modal-tab" data-tab="static">Static</div>
+      <div class="modal-tab" data-tab="permissions">Permissions</div>
+      <div class="modal-tab" data-tab="code">Code / APIs</div>
+      <div class="modal-tab" data-tab="evasion">Evasion</div>
+      <div class="modal-tab" data-tab="iocs">IoCs</div>
+      <div class="modal-tab" data-tab="manifest">Manifest</div>
+      <div class="modal-tab" data-tab="ai">AI Analysis</div>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────
+let _apks=[], _filtered=[], _sortCol='score', _sortDir=-1, _levelFilter='all', _search='', _currentApk=null, _currentTab='risk', _graphNet=null;
+const $ = id=>document.getElementById(id);
+const el = (tag,cls,html)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(html!==undefined) e.innerHTML=html; return e; };
+const fmtSize = b=>b>=1048576?(b/1048576).toFixed(1)+'MB':(b/1024).toFixed(0)+'KB';
+// Keep in sync with level thresholds in backend/engine/pipeline.py
+const scoreColor = s=>s>=85?'var(--red)':s>=68?'var(--orange)':s>=30?'var(--amber)':'var(--green)';
+const escHtml = s=>{ if(s===null||s===undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+// Chip/value that copies its data-copy text on click
+const copyable = (cls,text,label)=>`<span class="${cls} copyable" data-copy="${escHtml(text)}" title="Click to copy">${escHtml(label??text)}</span>`;
+
+let _toastTimer;
+function toast(msg){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>t.classList.remove('show'),1600);
+}
+document.addEventListener('click',e=>{
+  const c=e.target.closest('[data-copy]'); if(!c) return;
+  e.stopPropagation();
+  navigator.clipboard.writeText(c.dataset.copy).then(()=>toast('Copied: '+c.dataset.copy.slice(0,48)),()=>toast('Copy failed'));
+});
+function download(name,text,type){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+// ── LOAD ──────────────────────────────────────────────────
+async function loadApks(){
+  try{
+    const r=await fetch('/api/apks');
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    _apks=await r.json();
+    $('api-status-text').textContent='online';
+    $('offline-banner').style.display='none';
+    $('total-badge').textContent=`${_apks.length} APKs`;
+    applyFilter(); renderOverview(); populateCompareSelects();
+  }catch(e){ $('api-status-text').textContent='offline'; $('offline-banner').style.display='block'; console.error(e); }
+}
+
+// ── FILTER / SORT ─────────────────────────────────────────
+function applyFilter(){
+  _filtered=_apks.filter(a=>{
+    if(_levelFilter==='packed') return a.packed;
+    if(_levelFilter!=='all'&&a.level!==_levelFilter) return false;
+    if(_search){ const q=_search.toLowerCase(); return a.file_name.toLowerCase().includes(q)||a.package.toLowerCase().includes(q)||(a.app_name||'').toLowerCase().includes(q)||a.sha256.toLowerCase().includes(q)||String(a.score).includes(q); }
+    return true;
+  });
+  applySort();
+}
+function applySort(){
+  _filtered.sort((a,b)=>{ let va=a[_sortCol]??'',vb=b[_sortCol]??''; if(typeof va==='string'){va=va.toLowerCase();vb=vb.toLowerCase();} return _sortDir*(va<vb?-1:va>vb?1:0); });
+  renderApkTable(); $('apk-count').textContent=_filtered.length;
+  document.querySelectorAll('#apk-table th[data-col]').forEach(th=>{
+    th.dataset.label??=th.textContent;
+    th.textContent=th.dataset.label+(th.dataset.col===_sortCol?(_sortDir<0?' ▼':' ▲'):'');
+  });
+}
+
+function exportCsv(){
+  const cols=['file_name','app_name','package','score','level','packed','size','sha256','cert'];
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const rows=_filtered.map(a=>[...cols.map(c=>q(a[c])),q(a.iocs?.ips),q(a.iocs?.domains),q(a.iocs?.urls)].join(','));
+  download('apk_library.csv',[...cols,'ips','domains','urls'].join(',')+'\n'+rows.join('\n'),'text/csv');
+}
+
+// ── OVERVIEW ──────────────────────────────────────────────
+let _charts={};
+function renderOverview(){
+  const counts={Critical:0,High:0,Medium:0,Low:0}; let packed=0,totalIps=0,totalDoms=0;
+  _apks.forEach(a=>{ counts[a.level]=(counts[a.level]||0)+1; if(a.packed)packed++; totalIps+=(a.iocs?.ips||0); totalDoms+=(a.iocs?.domains||0); });
+  const grid=$('stats-grid'); grid.innerHTML='';
+  const files=_apks.reduce((n,a)=>n+Math.max(1,(a.aliases||[]).length),0);
+  [{label:'Critical',val:counts.Critical,cls:'critical',sub:'score ≥ 85'},
+   {label:'High',val:counts.High,cls:'high',sub:'score 68–84'},
+   {label:'Medium',val:counts.Medium,cls:'medium',sub:'score 30–67'},
+   {label:'Low / Benign',val:counts.Low,cls:'low',sub:'score < 30'},
+   {label:'Unique APKs',val:_apks.length,cls:'info',sub:`${files} files incl. duplicates`},
+   {label:'Packed',val:packed,cls:'info',sub:'packer detected'},
+   {label:'Hard-coded IPs',val:totalIps,cls:'info',sub:'across all samples'},
+   {label:'Domains',val:totalDoms,cls:'info',sub:'C2 / CDN'}
+  ].forEach(c=>{ const card=el('div',`stat-card ${c.cls}`); card.innerHTML=`<div class="stat-label">${c.label}</div><div class="stat-value">${c.val}</div><div class="stat-sub">${c.sub}</div>`; grid.appendChild(card); });
+
+  ['risk','packed','pkgs'].forEach(k=>{ if(_charts[k]){ _charts[k].destroy(); delete _charts[k]; } });
+  const base={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94a3b8',font:{size:10,family:'JetBrains Mono'}}}}};
+  _charts.risk=new Chart($('chart-risk'),{type:'doughnut',data:{labels:['Critical','High','Medium','Low'],datasets:[{data:[counts.Critical,counts.High,counts.Medium,counts.Low],backgroundColor:['#ef4444','#f97316','#f59e0b','#10b981'],borderColor:'#141926',borderWidth:2}]},options:{...base,cutout:'60%'}});
+  _charts.packed=new Chart($('chart-packed'),{type:'doughnut',data:{labels:['Packed','Clear'],datasets:[{data:[packed,_apks.length-packed],backgroundColor:['#8b5cf6','#1e2a40'],borderColor:'#141926',borderWidth:2}]},options:{...base,cutout:'60%'}});
+  const pkgC={}; _apks.forEach(a=>{ pkgC[a.package]=(pkgC[a.package]||0)+1; });
+  const top=Object.entries(pkgC).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  _charts.pkgs=new Chart($('chart-packages'),{type:'bar',data:{labels:top.map(([k])=>k.split('.').slice(-1)[0]),datasets:[{label:'Samples',data:top.map(([,v])=>v),backgroundColor:'rgba(245,158,11,.7)',borderColor:'rgba(245,158,11,1)',borderWidth:1,borderRadius:3}]},options:{...base,indexAxis:'y',onClick:(_,els)=>{ if(els.length) filterByPackage(top[els[0].index][0]); },onHover:(e,els)=>{ e.native.target.style.cursor=els.length?'pointer':'default'; },plugins:{...base.plugins,legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'rgba(255,255,255,.04)'}},y:{ticks:{color:'#a5f3fc',font:{size:9,family:'JetBrains Mono'}},grid:{color:'rgba(255,255,255,.02)'}}}}});
+
+  const tbody=$('overview-tbody'); tbody.innerHTML='';
+  _apks.filter(a=>a.level==='Critical'||a.level==='High').slice(0,15).forEach(a=>{
+    const tr=el('tr');
+    tr.innerHTML=`<td class="td-file">${escHtml(a.file_name)}</td><td class="td-pkg">${escHtml(a.package)}</td><td><span class="badge ${a.level}">${a.level}</span></td><td><div class="score-bar-wrap"><div class="score-bar"><div class="score-bar-fill" style="width:${a.score}%;background:${scoreColor(a.score)}"></div></div><span class="score-num" style="color:${scoreColor(a.score)}">${a.score}</span></div></td><td class="ioc-mini"><span>IP ${a.iocs?.ips||0}</span><span>DOM ${a.iocs?.domains||0}</span></td>`;
+    tr.onclick=()=>openDetail(a.sha256); tbody.appendChild(tr);
+  });
+}
+
+function filterByPackage(pkg){
+  _search=pkg; $('search-input').value=pkg; applyFilter(); switchPage('apks');
+}
+
+// ── APK TABLE ─────────────────────────────────────────────
+function renderApkTable(){
+  const tbody=$('apk-tbody'); tbody.innerHTML='';
+  if(!_filtered.length){ tbody.innerHTML='<tr><td colspan="8" class="table-empty">No samples match current filter</td></tr>'; return; }
+  _filtered.forEach(a=>{
+    const tr=el('tr');
+    tr.innerHTML=`<td class="td-file">${escHtml(a.file_name)}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">${escHtml(a.app_name||'—')}</td><td class="td-pkg">${escHtml(a.package)}</td><td><div class="score-bar-wrap"><div class="score-bar"><div class="score-bar-fill" style="width:${a.score}%;background:${scoreColor(a.score)}"></div></div><span class="score-num" style="color:${scoreColor(a.score)}">${a.score}</span></div></td><td><span class="badge ${a.level}">${a.level}</span></td><td>${a.packed?'<span class="packed-tag">PACKED</span>':'<span style="color:var(--text-dim);font-size:10px">—</span>'}</td><td class="ioc-mini"><span>IP ${a.iocs?.ips||0}</span><span>DOM ${a.iocs?.domains||0}</span></td><td style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px">${fmtSize(a.size)}</td>`;
+    tr.onclick=()=>openDetail(a.sha256); tbody.appendChild(tr);
+  });
+}
+
+// ── DETAIL MODAL ──────────────────────────────────────────
+async function openDetail(sha){
+  $('modal-overlay').classList.add('open');
+  $('modal-body').innerHTML='<div class="ai-loading" style="padding:32px"><div class="spinner"></div>&nbsp;Loading analysis…</div>';
+  $('modal-title').textContent='Loading…'; $('modal-pkg').textContent=''; $('modal-badges').innerHTML='';
+  try{
+    const r=await fetch(`/api/apks/${sha}`);
+    _currentApk=await r.json();
+    renderModal(_currentApk);
+  }catch(e){ $('modal-body').innerHTML=`<div class="no-data">Error: ${escHtml(e.message)}</div>`; }
+}
+
+function renderModal(r){
+  const s=r.static;
+  $('modal-title').textContent=s.file_name+(s.app_name?` · ${s.app_name}`:'');
+  $('modal-pkg').textContent=s.package;
+  const badges=$('modal-badges');
+  badges.innerHTML=`<span class="badge ${r.risk.level}">${r.risk.level} · ${r.risk.score}/100</span>`;
+  if(r.evasion.is_packed) badges.innerHTML+=' <span class="packed-tag">PACKED</span>';
+  if(s.certificate.flags?.length) badges.innerHTML+=' <span class="flag-tag">CERT FLAGS</span>';
+  if(s.manifest_flags?.length) badges.innerHTML+=' <span class="flag-tag">MANIFEST FLAGS</span>';
+  setModalTab(_currentTab);
+}
+
+function setModalTab(tab){
+  _currentTab=tab;
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  const r=_currentApk; if(!r) return;
+  const s=r.static; const body=$('modal-body');
+
+  if(tab==='risk'){
+    const contribs=r.risk.contributions.slice(0,25).map(c=>`<div class="contrib-item"><span class="contrib-pts">+${c.points}</span><span class="contrib-reason">${escHtml(c.reason)}</span></div>`).join('');
+    const pct=r.risk.score; const col=scoreColor(pct);
+    const bg=`conic-gradient(${col} ${pct*3.6}deg,var(--bg-base) 0deg)`;
+    const groups=riskBreakdown(r); const total=Object.values(groups).reduce((a,b)=>a+b,0)||1;
+    const verdict={Critical:'Strong, corroborating malicious indicators. Treat as hostile; preserve evidence and prioritise IoC blocking.',
+      High:'Multiple high-risk indicators. Likely malicious; confirm with dynamic analysis.',
+      Medium:'Some sensitive capabilities or evasion traits. Review context before concluding.',
+      Low:'Few or no risk indicators. Likely benign.'}[r.risk.level]||'';
+    body.innerHTML=`<div class="action-row">
+      <button class="btn btn-secondary" onclick="printReport()">🖨 Printable report</button>
+      <button class="btn btn-secondary" onclick="download('analysis_${s.hashes.sha256.slice(0,16)}.json',JSON.stringify(_currentApk,null,2),'application/json')">⬇ Full analysis JSON</button>
+    </div>
+    <div class="risk-verdict"><span class="badge ${r.risk.level}">${r.risk.level}</span>&nbsp; ${verdict}</div>
+    <div class="breakdown"><div class="breakdown-bar">${Object.entries(groups).map(([k,v])=>`<div style="width:${v/total*100}%;background:${GROUP_COLORS[k]}" title="${k}: ${v} pts"></div>`).join('')}</div>
+      <div class="breakdown-legend">${Object.entries(groups).map(([k,v])=>`<span><i style="background:${GROUP_COLORS[k]}"></i>${k} ${v}</span>`).join('')}</div></div>
+    <div class="risk-header"><div class="risk-circle" style="background:${bg}"><span class="score-big" style="color:${col}">${pct}</span><span class="score-label">/100</span></div><div class="risk-contributions">${contribs}</div></div>`;
+  }
+  else if(tab==='static'){
+    const cert=s.certificate.certificates[0]||{};
+    const schemes=[s.certificate.signed_v1?'v1':'',s.certificate.signed_v2?'v2':'',s.certificate.signed_v3?'v3':''].filter(Boolean).join(', ')||'none';
+    body.innerHTML=`<div class="info-grid">
+      <div class="info-item"><div class="info-item-label">MD5</div>${copyable('info-item-val',s.hashes.md5)}</div>
+      <div class="info-item"><div class="info-item-label">SHA-1</div>${copyable('info-item-val',s.hashes.sha1)}</div>
+      <div class="info-item" style="grid-column:1/-1"><div class="info-item-label">SHA-256</div>${copyable('info-item-val',s.hashes.sha256)}</div>
+      <div class="info-item"><div class="info-item-label">Size</div><div class="info-item-val">${fmtSize(s.size)}</div></div>
+      <div class="info-item"><div class="info-item-label">Version</div><div class="info-item-val">${escHtml(s.version_name)} (${escHtml(s.version_code)})</div></div>
+      <div class="info-item"><div class="info-item-label">Min SDK</div><div class="info-item-val">${escHtml(s.min_sdk)}</div></div>
+      <div class="info-item"><div class="info-item-label">Target SDK</div><div class="info-item-val">${escHtml(s.target_sdk)}</div></div>
+      <div class="info-item"><div class="info-item-label">Signing</div><div class="info-item-val">${escHtml(schemes)}</div></div>
+      <div class="info-item"><div class="info-item-label">Exported</div><div class="info-item-val">${s.exported_count} components</div></div>
+      <div class="info-item" style="grid-column:1/-1"><div class="info-item-label">Certificate Subject</div><div class="info-item-val" style="color:var(--text-sec);font-size:11px">${escHtml(cert.subject||'N/A')}</div></div>
+    </div>
+    ${s.certificate.flags?.length?`<div style="margin-bottom:10px">${s.certificate.flags.map(f=>`<span class="flag-tag">${escHtml(f)}</span>`).join('')}</div>`:''}
+    ${s.manifest_flags?.length?`<div style="margin-bottom:10px;font-size:11px;color:var(--red)">⚠ ${s.manifest_flags.map(escHtml).join(' · ')}</div>`:''}
+    <div class="ioc-section-title">Components</div>
+    <div class="info-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="info-item"><div class="info-item-label">Activities</div><div class="info-item-val">${s.components.activities?.length||0}</div></div>
+      <div class="info-item"><div class="info-item-label">Services</div><div class="info-item-val">${s.components.services?.length||0}</div></div>
+      <div class="info-item"><div class="info-item-label">Receivers</div><div class="info-item-val">${s.components.receivers?.length||0}</div></div>
+      <div class="info-item"><div class="info-item-label">Providers</div><div class="info-item-val">${s.components.providers?.length||0}</div></div>
+    </div>`;
+  }
+  else if(tab==='permissions'){
+    const perms=s.permissions;
+    const dangerous=perms.filter(p=>p.level==='dangerous');
+    const suspicious=perms.filter(p=>p.level==='suspicious');
+    const normal=perms.filter(p=>p.level==='normal'||p.level==='custom');
+    const rp=list=>list.map(p=>`<div class="perm-row ${p.level}"><span class="perm-name">${escHtml(p.short)}</span><span class="perm-reason">${escHtml(p.reason||'')}</span><span class="perm-weight">${p.weight>0?'+'+p.weight:''}</span></div>`).join('');
+    body.innerHTML=`<div style="margin-bottom:12px;display:flex;gap:12px;font-family:var(--font-mono);font-size:11px"><span style="color:var(--red)">⬥ ${dangerous.length} dangerous</span><span style="color:var(--amber)">⬥ ${suspicious.length} suspicious</span><span style="color:var(--text-dim)">⬥ ${normal.length} normal/custom</span></div>
+    ${dangerous.length?`<div class="ioc-section-title">Dangerous</div><div class="perm-list" style="margin-bottom:12px">${rp(dangerous)}</div>`:''}
+    ${suspicious.length?`<div class="ioc-section-title">Suspicious</div><div class="perm-list" style="margin-bottom:12px">${rp(suspicious)}</div>`:''}
+    ${normal.length?`<div class="ioc-section-title">Normal / Custom</div><div class="perm-list">${rp(normal)}</div>`:''}`;
+  }
+  else if(tab==='code'){
+    const cats=Object.entries(r.code.api_by_category||{});
+    const obf=r.code.obfuscation||{};
+    const secrets=r.code.secrets||[];
+    const grouped={};
+    (r.code.api_findings||[]).forEach(f=>{ (grouped[f.category]||(grouped[f.category]=[])).push(f); });
+    body.innerHTML=`<div class="info-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+      <div class="info-item"><div class="info-item-label">DEX Count</div><div class="info-item-val">${r.code.dex_count||0}</div></div>
+      <div class="info-item"><div class="info-item-label">App Classes</div><div class="info-item-val">${(r.code.app_class_count||0).toLocaleString()}</div></div>
+      <div class="info-item"><div class="info-item-label">Obfuscation</div><div class="info-item-val" style="color:${(obf.ratio||0)>0.7?'var(--red)':'var(--green)'}">${((obf.ratio||0)*100).toFixed(0)}%</div></div>
+    </div>
+    ${secrets.length?`<div class="ioc-section-title">Hardcoded Secrets (${secrets.length})</div><div style="margin-bottom:12px">${secrets.slice(0,10).map(s=>`<div class="api-finding"><span class="api-name"><span style="color:var(--purple)">${escHtml(s.type||'secret')}</span>: <span style="color:var(--amber)">${escHtml(s.value||'')}</span></span></div>`).join('')}</div>`:''}
+    <div class="ioc-section-title">API Findings (${cats.length} categories)</div>
+    ${cats.map(([cat,count])=>`<div class="api-category"><div class="api-cat-header" onclick="this.nextElementSibling.classList.toggle('open')"><span style="color:var(--cyan)">${escHtml(cat)}</span><span style="color:var(--amber);font-size:10px">${count} call${count>1?'s':''} ▾</span></div><div class="api-cat-body">${(grouped[cat]||[]).map(f=>`<div class="api-finding"><span class="api-name">${escHtml(f.api)}</span><span class="api-loc">${(f.locations||[]).slice(0,4).map(escHtml).join(' · ')}</span></div>`).join('')}</div></div>`).join('')}`;
+  }
+  else if(tab==='evasion'){
+    const findings=r.evasion.findings||[];
+    const apkid=r.evasion.apkid||[];
+    const sevMap={'high':'Critical','medium':'Medium','low':'Low'};
+    body.innerHTML=`<div class="info-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+      <div class="info-item"><div class="info-item-label">ZIP Entries</div><div class="info-item-val">${r.evasion.zip_entries||0}</div></div>
+      <div class="info-item"><div class="info-item-label">Findings</div><div class="info-item-val" style="color:${findings.length?'var(--red)':'var(--green)'}">${findings.length}</div></div>
+      <div class="info-item"><div class="info-item-label">APKiD</div><div class="info-item-val">${apkid.length}</div></div>
+      <div class="info-item"><div class="info-item-label">Packed</div><div class="info-item-val">${r.evasion.is_packed?'<span style="color:var(--red)">YES</span>':'<span style="color:var(--green)">No</span>'}</div></div>
+    </div>
+    ${apkid.length?`<div class="ioc-section-title">APKiD Signatures</div><div class="ioc-chips" style="margin-bottom:12px">${apkid.map(a=>`<span class="ioc-chip">${escHtml(a.tag)}: ${escHtml(a.description)}</span>`).join('')}</div>`:''}
+    <div class="ioc-section-title">Evasion Techniques</div>
+    <div class="evasion-list">${findings.length?findings.map(f=>`<div class="evasion-item"><div class="ev-title"><span class="badge ${sevMap[f.severity]||'Low'}">${escHtml(f.severity)}</span>${escHtml(f.title)}</div><div class="ev-evidence">${escHtml(f.evidence||'')}</div></div>`).join(''):'<div class="no-data">No evasion techniques detected</div>'}</div>`;
+  }
+  else if(tab==='iocs'){
+    const ioc=r.iocs; const hashes=ioc.hashes||{};
+    const none='<span style="color:var(--text-dim);font-size:11px">None</span>';
+    body.innerHTML=`<div style="font-size:10px;color:var(--text-dim);font-family:var(--font-mono);margin-bottom:12px">Tip: click any indicator to copy it</div>
+    <div class="ioc-section"><div class="ioc-section-title">File Hashes</div><div class="ioc-chips">${Object.entries(hashes).map(([k,v])=>copyable('ioc-chip hash',v,`${k.toUpperCase()}: ${v}`)).join('')}${(ioc.certificate_sha256||[]).map(h=>copyable('ioc-chip hash',h,`CERT-SHA256: ${h}`)).join('')}</div></div>
+    <div class="ioc-section"><div class="ioc-section-title">IP Addresses (${(ioc.ips||[]).length})</div><div class="ioc-chips">${(ioc.ips||[]).map(ip=>copyable('ioc-chip ip',ip)).join('')||none}</div></div>
+    <div class="ioc-section"><div class="ioc-section-title">Domains (${(ioc.domains||[]).length})</div><div class="ioc-chips">${(ioc.domains||[]).map(d=>copyable('ioc-chip domain',d)).join('')||none}</div></div>
+    <div class="ioc-section"><div class="ioc-section-title">URLs (${(ioc.urls||[]).length})</div><div class="ioc-chips">${(ioc.urls||[]).map(u=>copyable('ioc-chip url',u)).join('')||none}</div></div>
+    ${Object.keys(ioc.cloud||{}).length?`<div class="ioc-section"><div class="ioc-section-title">Cloud Backends</div><div class="ioc-chips">${Object.entries(ioc.cloud).map(([k,v])=>`<span class="ioc-chip">${escHtml(k)}: ${escHtml(String(v))}</span>`).join('')}</div></div>`:''}
+    <div style="margin-top:16px"><button class="btn btn-secondary" onclick="exportIocs()">⬇ Export IoCs as JSON</button></div>`;
+  }
+  else if(tab==='manifest'){
+    body.innerHTML=`<div style="margin-bottom:10px;display:flex;justify-content:flex-end"><button class="btn btn-secondary" onclick="window.open('/api/apks/${r.static.hashes.sha256}/manifest','_blank')">Open full ↗</button></div><pre class="manifest-pre" id="manifest-content">Loading…</pre>`;
+    fetch(`/api/apks/${r.static.hashes.sha256}/manifest`).then(res=>res.text()).then(html=>{ const d=document.createElement('div'); d.innerHTML=html; $('manifest-content').textContent=(d.querySelector('pre')?.textContent||d.textContent); }).catch(()=>{ $('manifest-content').textContent='Could not load manifest.'; });
+  }
+  else if(tab==='ai'){
+    const existingSummary=r.ai_summary;
+    body.innerHTML=`<div class="ai-box"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em">AI Forensic Summary</span><button class="btn btn-secondary" id="gen-summary-btn" onclick="generateSummary()">✦ Generate / Refresh</button></div><div id="ai-summary-content" class="ai-summary-text">${existingSummary?escHtml(existingSummary):'<span style="color:var(--text-dim)">Click "Generate / Refresh" to produce a Claude forensic summary for this APK.</span>'}</div></div>
+    <div style="margin-bottom:8px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em">Investigator Q&amp;A</div>
+    <div class="ai-input-row"><input id="ai-question" type="text" placeholder="e.g. What C2 servers are used? Is this a RAT?" autocomplete="off"/><button class="btn btn-primary" id="ask-btn" onclick="askAi()">Ask</button></div>
+    <div id="ai-answer-box"></div>`;
+    $('ai-question').addEventListener('keydown',e=>{ if(e.key==='Enter') askAi(); });
+  }
+}
+
+async function generateSummary(){
+  if(!_currentApk) return;
+  const btn=$('gen-summary-btn'), content=$('ai-summary-content');
+  btn.disabled=true;
+  content.innerHTML='<div class="ai-loading"><div class="spinner"></div>&nbsp;Generating AI forensic summary…</div>';
+  try{
+    const r=await fetch(`/api/summary/${_currentApk.static.hashes.sha256}`,{method:'POST'});
+    const j=await r.json();
+    content.textContent=j.summary||'(No summary generated)';
+    _currentApk.ai_summary=j.summary;
+  }catch(e){ content.textContent='Error generating summary.'; }
+  btn.disabled=false;
+}
+
+async function askAi(){
+  if(!_currentApk) return;
+  const q=$('ai-question').value.trim(); if(!q) return;
+  const answerBox=$('ai-answer-box'), btn=$('ask-btn');
+  btn.disabled=true;
+  answerBox.innerHTML='<div class="ai-loading"><div class="spinner"></div>&nbsp;Consulting Claude…</div>';
+  try{
+    const r=await fetch(`/api/ask/${_currentApk.static.hashes.sha256}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    const j=await r.json();
+    answerBox.innerHTML=`<div class="ai-answer">${escHtml(j.answer||'No response.')}</div>`;
+  }catch(e){ answerBox.innerHTML=`<div class="ai-answer" style="color:var(--red)">Error: ${escHtml(e.message)}</div>`; }
+  btn.disabled=false;
+}
+
+function exportIocs(){
+  if(!_currentApk) return;
+  download(`iocs_${_currentApk.static.hashes.sha256.slice(0,16)}.json`,JSON.stringify(_currentApk.iocs,null,2),'application/json');
+}
+
+// Groups score contributions by source module for the breakdown bar
+const GROUP_COLORS={Permissions:'#ef4444',Code:'#06b6d4',Evasion:'#8b5cf6','Manifest / Cert':'#f97316',Network:'#3b82f6'};
+function riskBreakdown(r){
+  const flags=new Set([...(r.static.manifest_flags||[]),...(r.static.certificate.flags||[])]);
+  const g={}; Object.keys(GROUP_COLORS).forEach(k=>g[k]=0);
+  r.risk.contributions.forEach(c=>{
+    const k=c.reason.startsWith('Permission ')?'Permissions':c.reason.includes('code reference')?'Code'
+      :flags.has(c.reason)?'Manifest / Cert':c.reason.includes('public IP')?'Network':'Evasion';
+    g[k]+=c.points;
+  });
+  Object.keys(g).forEach(k=>{ if(!g[k]) delete g[k]; });
+  return g;
+}
+
+function printReport(){
+  const r=_currentApk; if(!r) return;
+  const s=r.static, i=r.iocs;
+  const list=a=>a?.length?`<ul>${a.map(x=>`<li>${escHtml(x)}</li>`).join('')}</ul>`:'<p class="m">None</p>';
+  const w=window.open('','_blank');
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Forensic report · ${escHtml(s.file_name)}</title>
+  <style>body{font:13px/1.5 Inter,Arial,sans-serif;color:#111;max-width:860px;margin:32px auto;padding:0 16px}h1{font-size:20px;margin:0}h2{font-size:14px;border-bottom:2px solid #111;padding-bottom:3px;margin-top:24px}
+  table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;text-align:left;vertical-align:top;font-size:12px}th{background:#f3f3f3;width:180px}
+  code,li{font-family:Consolas,monospace;font-size:11px;word-break:break-all}.m{color:#777}.lvl{font-weight:700;color:${scoreColor(r.risk.score).includes('green')?'#047857':'#b91c1c'}}
+  pre{white-space:pre-wrap;background:#f7f7f7;padding:10px;border:1px solid #ddd}</style></head><body>
+  <h1>APK Forensic Analysis Report</h1>
+  <p class="m">Team CH26-2834 · PS-02 · Generated ${new Date().toLocaleString()}</p>
+  <h2>1. Sample identification</h2><table>
+  <tr><th>File name</th><td>${escHtml(s.file_name)}</td></tr><tr><th>App name</th><td>${escHtml(s.app_name||'—')}</td></tr>
+  <tr><th>Package</th><td><code>${escHtml(s.package)}</code></td></tr><tr><th>Version</th><td>${escHtml(s.version_name)} (${escHtml(s.version_code)})</td></tr>
+  <tr><th>Size</th><td>${fmtSize(s.size)}</td></tr><tr><th>MD5</th><td><code>${escHtml(s.hashes.md5)}</code></td></tr>
+  <tr><th>SHA-1</th><td><code>${escHtml(s.hashes.sha1)}</code></td></tr><tr><th>SHA-256</th><td><code>${escHtml(s.hashes.sha256)}</code></td></tr>
+  <tr><th>Certificate subject</th><td>${escHtml(s.certificate.certificates[0]?.subject||'N/A')}</td></tr></table>
+  <h2>2. Risk assessment</h2><p>Score <b>${r.risk.score}/100</b> · Level <span class="lvl">${r.risk.level}</span></p>
+  <table><tr><th>Points</th><th style="width:auto">Reason</th></tr>${r.risk.contributions.map(c=>`<tr><td>+${c.points}</td><td>${escHtml(c.reason)}</td></tr>`).join('')}</table>
+  ${r.ai_summary?`<h2>3. AI summary</h2><pre>${escHtml(r.ai_summary)}</pre>`:''}
+  <h2>${r.ai_summary?4:3}. Indicators of compromise</h2>
+  <b>IP addresses</b>${list(i.ips)}<b>Domains</b>${list(i.domains)}<b>URLs</b>${list(i.urls)}<b>Certificate SHA-256</b>${list(i.certificate_sha256)}
+  <h2>${r.ai_summary?5:4}. Evasion findings</h2>${list((r.evasion.findings||[]).map(f=>`[${f.severity}] ${f.title}: ${f.evidence||''}`))}
+  <h2>${r.ai_summary?6:5}. Dangerous / suspicious permissions</h2>${list(s.permissions.filter(p=>p.level!=='normal'&&p.level!=='custom').map(p=>`${p.short} — ${p.reason||''}`))}
+  <p class="m" style="margin-top:32px">Automated static analysis. Findings should be corroborated by an examiner before being relied upon.</p>
+  </body></html>`);
+  w.document.close(); w.focus(); setTimeout(()=>w.print(),300);
+}
+
+// ── CAMPAIGNS ─────────────────────────────────────────────
+let _campaigns=[], _campFilter='multi';
+async function loadCampaigns(){
+  const container=$('campaigns-container');
+  container.innerHTML='<div class="ai-loading" style="padding:32px"><div class="spinner"></div>&nbsp;Loading campaigns…</div>';
+  try{
+    const r=await fetch('/api/campaigns'); _campaigns=await r.json();
+    renderCampaigns();
+  }catch(e){ $('campaigns-container').innerHTML=`<div class="no-data">Could not load campaigns: ${escHtml(e.message)}</div>`; }
+}
+function renderCampaigns(){
+  const container=$('campaigns-container'); container.innerHTML='';
+  const bySha=Object.fromEntries(_apks.map(a=>[a.sha256,a]));
+  const list=_campaigns.filter(c=>_campFilter==='all'||c.count>1);
+  if(!list.length){ container.innerHTML='<div class="no-data">No multi-sample clusters</div>'; return; }
+  list.forEach(c=>{
+    const card=el('div','campaign-card');
+    const samples=c.samples.map(sha=>bySha[sha]).filter(Boolean)
+      .map(a=>`<div class="campaign-sample" data-sha="${a.sha256}"><span style="color:var(--text-code)">${escHtml(a.file_name)}</span><span style="color:var(--text-dim)">${a.sha256.slice(0,12)}…</span><span class="badge ${a.level}">${a.score}</span></div>`).join('');
+    card.innerHTML=`<div class="campaign-pkg">${escHtml(c.package)}</div><div class="campaign-meta"><span style="color:${scoreColor(c.max_score)}">${c.max_score}/100 max score</span><span>${c.count} sample${c.count>1?'s':''}</span><span>${c.certificates} cert${c.certificates>1?'s':''}</span>${c.certificates>1?'<span style="color:var(--orange)">⚠ re-signed variants</span>':''}</div><div class="campaign-samples">${samples}</div>`;
+    card.addEventListener('click',e=>{
+      const row=e.target.closest('.campaign-sample');
+      if(row) openDetail(row.dataset.sha); else card.classList.toggle('open');
+    });
+    container.appendChild(card);
+  });
+}
+
+// ── GRAPH ─────────────────────────────────────────────────
+async function loadGraph(){
+  const container=$('graph-container');
+  container.innerHTML='<div class="ai-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-card)"><div class="spinner"></div>&nbsp;Loading graph…</div>';
+  const minScore=parseInt($('min-score-input').value)||0;
+  try{
+    const r=await fetch(`/api/graph?min_score=${minScore}`); const data=await r.json();
+    container.innerHTML='';
+    const cmap={apk:'#f59e0b',package:'#3b82f6',ip:'#06b6d4',domain:'#10b981',cert:'#8b5cf6'};
+    const nodes=new vis.DataSet(data.nodes.map(n=>({id:n.id,label:n.label,color:{background:cmap[n.kind]||'#94a3b8',border:'#0a0d14',highlight:{background:cmap[n.kind]||'#94a3b8',border:'#fff'}},font:{color:'#e2e8f0',size:11,face:'JetBrains Mono'},shape:n.kind==='apk'?'box':'dot',size:n.kind==='apk'?20:12,borderWidth:n.kind==='apk'?2:1})));
+    const edges=new vis.DataSet(data.edges.map((e,i)=>({id:i,from:e.from,to:e.to,color:{color:'rgba(255,255,255,.12)',highlight:'rgba(245,158,11,.6)'},width:1})));
+    if(_graphNet) _graphNet.destroy();
+    _graphNet=new vis.Network(container,{nodes,edges},{physics:{solver:'forceAtlas2Based',forceAtlas2Based:{gravitationalConstant:-80,springLength:120},stabilization:{iterations:120}},interaction:{hover:true,tooltipDelay:100},nodes:{borderWidthSelected:3}});
+    _graphNet.on('click',params=>{ if(params.nodes.length){ const nid=params.nodes[0]; if(nid.startsWith('apk:')) openDetail(nid.replace('apk:','')); } });
+  }catch(e){ container.innerHTML=`<div class="no-data">Graph error: ${escHtml(e.message)}</div>`; }
+}
+
+// ── UPLOAD ────────────────────────────────────────────────
+function setupUpload(){
+  const zone=$('upload-zone'), fi=$('file-input');
+  zone.addEventListener('click',()=>fi.click());
+  zone.addEventListener('dragover',e=>{ e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',e=>{ e.preventDefault(); zone.classList.remove('drag-over'); uploadFiles(e.dataTransfer.files); });
+  fi.addEventListener('change',()=>uploadFiles(fi.files));
+}
+async function uploadFiles(files){
+  const status=$('upload-status'); status.style.display='block';
+  let n=0;
+  for(const file of files){
+    if(!file.name.toLowerCase().endsWith('.apk')){ addUploadItem(status,file.name,'✗ Not an APK','var(--red)'); continue; }
+    const uid=`up-${Date.now()}-${n++}`;
+    addUploadItem(status,file.name,'Uploading…','var(--amber)',uid);
+    try{
+      const fd=new FormData(); fd.append('file',file);
+      const r=await fetch('/api/upload',{method:'POST',body:fd});
+      const j=await r.json();
+      const item=$(uid);
+      if(item){ if(!r.ok) throw new Error(j.detail||`HTTP ${r.status}`);
+      item.textContent=j.cached?'✓ Already cached':'✓ Done · '+j.sha256.slice(0,16)+'…'; item.style.color='var(--green)'; }
+      loadApks();
+    }catch(e){ const item=$(uid); if(item){ item.textContent=`✗ ${e.message}`; item.style.color='var(--red)'; } }
+  }
+}
+function addUploadItem(container,name,statusText,color,id){
+  const row=el('div','upload-item');
+  row.innerHTML=`<span class="filename">${escHtml(name)}</span><span class="status" id="${id||''}" style="color:${color}">${escHtml(statusText)}</span>`;
+  container.appendChild(row);
+}
+
+// ── COMPARE ───────────────────────────────────────────────
+function populateCompareSelects(){
+  const opts=_apks.map(a=>`<option value="${a.sha256}">${escHtml(a.file_name)} · ${escHtml(a.package)} (${a.score})</option>`).join('');
+  $('compare-a').innerHTML=opts; $('compare-b').innerHTML=opts;
+  if(_apks.length>1) $('compare-b').selectedIndex=1;
+}
+async function runCompare(){
+  const a=$('compare-a').value, b=$('compare-b').value;
+  if(!a||!b||a===b) return;
+  const rd=$('compare-results');
+  rd.innerHTML='<div class="ai-loading"><div class="spinner"></div>&nbsp;Comparing…</div>';
+  try{
+    const r=await fetch(`/api/compare?a=${a}&b=${b}`); const data=await r.json();
+    const sim=Math.round(data.similarity*100);
+    const sc=sim>70?'var(--red)':sim>40?'var(--amber)':'var(--green)';
+    const rs=(title,obj)=>`<div class="compare-section"><div class="compare-section-title">${title}</div><div class="compare-chips">${(obj.common||[]).map(v=>`<span class="compare-chip common">✓ ${escHtml(v)}</span>`).join('')}${(obj.only_a||[]).map(v=>`<span class="compare-chip only_a">A: ${escHtml(v)}</span>`).join('')}${(obj.only_b||[]).map(v=>`<span class="compare-chip only_b">B: ${escHtml(v)}</span>`).join('')}${!obj.common?.length&&!obj.only_a?.length&&!obj.only_b?.length?'<span style="color:var(--text-dim);font-size:10px">None</span>':''}</div></div>`;
+    rd.innerHTML=`<div class="similarity-bar-wrap"><div class="similarity-pct" style="color:${sc}">${sim}%</div><div><div style="font-size:12px;font-weight:600;margin-bottom:4px">Similarity Score</div><div style="font-size:11px;color:var(--text-sec)">Shared permissions, APIs, evasion techniques and IoCs</div></div></div>
+    <div class="compare-grid"><div class="info-item"><div class="info-item-label">APK A</div><div class="info-item-val">${escHtml(data.a?.file||'')}</div><div style="color:var(--text-sec);font-size:10px;margin-top:2px">${escHtml(data.a?.package||'')} · score ${data.a?.score||0}</div></div><div class="info-item"><div class="info-item-label">APK B</div><div class="info-item-val">${escHtml(data.b?.file||'')}</div><div style="color:var(--text-sec);font-size:10px;margin-top:2px">${escHtml(data.b?.package||'')} · score ${data.b?.score||0}</div></div></div>
+    ${rs('Permissions',data.permissions||{})}${rs('API Categories',data.api||{})}${rs('Evasion Techniques',data.evasion||{})}${rs('IP Addresses',data.ips||{})}${rs('Domains',data.domains||{})}
+    <div style="margin-top:8px"><div class="compare-section-title">Legend</div><div class="compare-chips"><span class="compare-chip common">✓ Both</span><span class="compare-chip only_a">A: Only in A</span><span class="compare-chip only_b">B: Only in B</span></div></div>`;
+  }catch(e){ rd.innerHTML=`<div class="no-data">Error: ${escHtml(e.message)}</div>`; }
+}
+
+// ── NAVIGATION ────────────────────────────────────────────
+function switchPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  const page=document.getElementById(`page-${id}`); if(page) page.classList.add('active');
+  const btn=document.getElementById(`nav-${id}`); if(btn) btn.classList.add('active');
+  if(id==='campaigns') loadCampaigns();
+  if(id==='graph') loadGraph();
+}
+document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>switchPage(btn.dataset.page)));
+$('refresh-btn').addEventListener('click',loadApks);
+
+$('search-input').addEventListener('input',e=>{ _search=e.target.value; applyFilter(); if(_search&&document.querySelector('#page-overview.active')) switchPage('apks'); });
+
+$('modal-close').addEventListener('click',()=>{ $('modal-overlay').classList.remove('open'); _currentApk=null; });
+$('modal-overlay').addEventListener('click',e=>{ if(e.target===$('modal-overlay')){ $('modal-overlay').classList.remove('open'); _currentApk=null; } });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ $('modal-overlay').classList.remove('open'); _currentApk=null; }
+  if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){ e.preventDefault(); $('search-input').focus(); }
+});
+document.querySelectorAll('.modal-tab').forEach(tab=>tab.addEventListener('click',()=>setModalTab(tab.dataset.tab)));
+
+document.querySelectorAll('#apk-table th[data-col]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const col=th.dataset.col;
+    if(_sortCol===col) _sortDir*=-1; else{_sortCol=col;_sortDir=-1;}
+    document.querySelectorAll('#apk-table th').forEach(t=>t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    applySort();
+  });
+});
+
+document.querySelectorAll('.filter-btn[data-camp]').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('.filter-btn[data-camp]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); _campFilter=btn.dataset.camp; renderCampaigns();
+}));
+$('export-csv-btn').addEventListener('click',exportCsv);
+
+document.querySelectorAll('.filter-btn[data-level]').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('.filter-btn[data-level]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _levelFilter=btn.dataset.level;
+  applyFilter();
+}));
+
+$('do-compare-btn').addEventListener('click',runCompare);
+$('load-graph-btn').addEventListener('click',loadGraph);
+
+// ── BOOT ──────────────────────────────────────────────────
+setupUpload();
+loadApks();
+</script>
+</body>
+</html>
